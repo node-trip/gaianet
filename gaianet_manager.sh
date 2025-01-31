@@ -470,8 +470,110 @@ EOL
     sed -i "s/__NODE_NUMBER__/$node_number/g" "/root/random_chat_with_faker_$node_number.py"
 }
 
-# Инициализация окружения при запуске скрипта
-init_environment
+# Функция для перезапуска ноды
+restart_node() {
+    local node_number=$1
+    local node_name
+    
+    if [ "$node_number" -eq 1 ]; then
+        node_name="gaianet"
+    else
+        node_name="gaianet-$node_number"
+    fi
+
+    echo -e "${YELLOW}Перезапуск ноды $node_number...${NC}"
+    systemctl restart $node_name && sleep 30 && screen -S faker_session_$node_number -X quit && sleep 2 && cd /root && screen -dmS faker_session_$node_number python3 random_chat_with_faker_$node_number.py
+    
+    # Записываем время последнего перезапуска
+    echo "$(date '+%Y-%m-%d %H:%M:%S')" > "/root/.last_restart_node_$node_number"
+    
+    echo -e "${GREEN}Перезапуск завершен!${NC}"
+}
+
+# Функция для настройки расписания перезапуска
+setup_restart_schedule() {
+    local node_number=$1
+    local hours=$2
+    
+    # Удаляем старое расписание если есть
+    crontab -l | grep -v "restart_node_$node_number" | crontab -
+    
+    # Добавляем новое расписание
+    (crontab -l 2>/dev/null; echo "0 */$hours * * * /root/gaianet_manager.sh --restart-node $node_number") | crontab -
+    
+    # Сохраняем информацию о расписании
+    echo "$hours" > "/root/.restart_schedule_node_$node_number"
+    
+    echo -e "${GREEN}Расписание перезапуска настроено на каждые $hours часов${NC}"
+}
+
+# Функция для просмотра информации о расписании
+view_restart_info() {
+    local node_number=$1
+    
+    echo -e "${YELLOW}Информация о перезапусках ноды $node_number:${NC}"
+    
+    # Проверяем настроенное расписание
+    if [ -f "/root/.restart_schedule_node_$node_number" ]; then
+        hours=$(cat "/root/.restart_schedule_node_$node_number")
+        echo -e "Расписание: ${GREEN}каждые $hours часов${NC}"
+    else
+        echo -e "Расписание: ${RED}не настроено${NC}"
+    fi
+    
+    # Проверяем время последнего перезапуска
+    if [ -f "/root/.last_restart_node_$node_number" ]; then
+        last_restart=$(cat "/root/.last_restart_node_$node_number")
+        echo -e "Последний перезапуск: ${GREEN}$last_restart${NC}"
+    else
+        echo -e "Последний перезапуск: ${RED}нет информации${NC}"
+    fi
+}
+
+# Функция управления перезапуском
+manage_restart() {
+    while true; do
+        clear_screen
+        echo -e "${YELLOW}Управление перезапуском:${NC}\n"
+        echo "1. Перезапустить ноду сейчас"
+        echo "2. Настроить расписание перезапуска"
+        echo "3. Просмотреть информацию о перезапусках"
+        echo "4. Вернуться в главное меню"
+        
+        read -p "Выберите действие: " choice
+        
+        case $choice in
+            1)
+                read -p "Введите номер ноды для перезапуска: " node_number
+                restart_node $node_number
+                read -p "Нажмите Enter для продолжения"
+                ;;
+            2)
+                read -p "Введите номер ноды: " node_number
+                read -p "Через сколько часов перезапускать ноду? " hours
+                setup_restart_schedule $node_number $hours
+                read -p "Нажмите Enter для продолжения"
+                ;;
+            3)
+                read -p "Введите номер ноды: " node_number
+                view_restart_info $node_number
+                read -p "Нажмите Enter для продолжения"
+                ;;
+            4)
+                return
+                ;;
+            *)
+                echo "Неверный выбор"
+                ;;
+        esac
+    done
+}
+
+# Проверяем аргументы командной строки для автоматического перезапуска
+if [ "$1" = "--restart-node" ] && [ ! -z "$2" ]; then
+    restart_node $2
+    exit 0
+fi
 
 # Главное меню
 while true; do
@@ -481,7 +583,8 @@ while true; do
     echo "3. Управление screen сессиями"
     echo "4. Удалить ноду"
     echo "5. Проверить статус ноды"
-    echo "6. Выход"
+    echo "6. Управление перезапуском"
+    echo "7. Выход"
     
     read -p "Выберите действие: " choice
     
@@ -495,7 +598,8 @@ while true; do
             check_node_status $node_number
             read -p "Нажмите Enter для возврата в меню"
             ;;
-        6) exit 0 ;;
+        6) manage_restart ;;
+        7) exit 0 ;;
         *) echo "Неверный выбор" ;;
     esac
 done 
