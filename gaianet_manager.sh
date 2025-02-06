@@ -530,6 +530,31 @@ view_restart_info() {
     fi
 }
 
+# Функция для смены домена в чат-боте
+change_chat_domain() {
+    local node_number=$1
+    
+    echo -e "${YELLOW}Смена домена для чат-бота ноды $node_number${NC}"
+    echo "Текущий домен:"
+    grep "NODE_URL" "/root/random_chat_with_faker_$node_number.py"
+    
+    read -p "Введите новый домен (например, vkvik.gaia.domains): " new_domain
+    
+    # Создаем бэкап скрипта
+    cp "/root/random_chat_with_faker_$node_number.py" "/root/random_chat_with_faker_$node_number.py.backup"
+    
+    # Обновляем URL в скрипте
+    sed -i "s|NODE_URL = \"https://.*\.gaia\.domains/v1/chat/completions\"|NODE_URL = \"https://$new_domain/v1/chat/completions\"|" "/root/random_chat_with_faker_$node_number.py"
+    
+    echo -e "${GREEN}Домен обновлен. Новый URL:${NC}"
+    grep "NODE_URL" "/root/random_chat_with_faker_$node_number.py"
+    
+    echo -e "\n${YELLOW}Перезапуск чат-бота...${NC}"
+    screen -S "faker_session_$node_number" -X quit && sleep 2 && cd /root && screen -dmS "faker_session_$node_number" python3 "random_chat_with_faker_$node_number.py"
+    
+    echo -e "${GREEN}Чат-бот перезапущен!${NC}"
+}
+
 # Функция управления перезапуском
 manage_restart() {
     while true; do
@@ -538,7 +563,8 @@ manage_restart() {
         echo "1. Перезапустить ноду сейчас"
         echo "2. Настроить расписание перезапуска"
         echo "3. Просмотреть информацию о перезапусках"
-        echo "4. Вернуться в главное меню"
+        echo "4. Сменить домен чат-бота"
+        echo "5. Вернуться в главное меню"
         
         read -p "Выберите действие: " choice
         
@@ -560,6 +586,11 @@ manage_restart() {
                 read -p "Нажмите Enter для продолжения"
                 ;;
             4)
+                read -p "Введите номер ноды: " node_number
+                change_chat_domain $node_number
+                read -p "Нажмите Enter для продолжения"
+                ;;
+            5)
                 return
                 ;;
             *)
